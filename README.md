@@ -196,6 +196,14 @@ When enabled:
   - Always provide `WHATSAPP_APP_SECRET` when `VERIFY_WEBHOOK_SIGNATURE=true`.
   - For tunnels/proxies: Set `PUBLIC_BASE_URL` to match your tunnel URL (e.g., `https://my-tunnel.cloudflare.com`) and use it in Meta's webhook callback URL.
 
+## Plugin Mode (read-only MCP)
+
+- Set `WAMCP_PLUGIN_MODE=true` (default: false) to disable webhook ingestion and outbound sending; only the MCP server and health endpoints run.
+- Use a read-only `DATABASE_URL` for messaging data. No migrations or writes occur. Optional audits: set `AUDIT_DATABASE_URL` to log tool calls to `audit_log`; otherwise, audits are just logged.
+- WhatsApp webhook/token env vars are not required in plugin mode. Startup logs show: `plugin_mode`, `db_connected`, `audit_db_enabled`, `public_base_url`.
+- Tool responses now include `data`, `sources` (with `kind`, `id`, `ts`, `conversation_id`, optional `permalink` when `PUBLIC_BASE_URL` is set), and `scope`.
+- Docker: `docker-compose up mcp` runs the MCP service with `WAMCP_PLUGIN_MODE=true`. Bare metal: `WAMCP_PLUGIN_MODE=true python -m app.mcp.server`.
+
 ## MCP Configuration (Claude Desktop)
 
 To use this with Claude Desktop:
@@ -208,7 +216,7 @@ To use this with Claude Desktop:
   "mcpServers": {
     "wamcp": {
       "command": "docker",
-      "args": ["exec", "-i", "wamcp-api-1", "python", "-m", "app.mcp.server"]
+      "args": ["exec", "-i", "wamcp-mcp-1", "python", "-m", "app.mcp.server"]
     }
   }
 }

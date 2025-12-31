@@ -58,6 +58,7 @@ class Settings(BaseSettings):
 
     APP_ENV: str = "dev"
     API_PORT: int = 8000
+    WAMCP_PLUGIN_MODE: bool = False
 
     # Watchdog & Reliability
     WATCHDOG_ENABLED: bool = True
@@ -72,6 +73,7 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/wamcp"
+    AUDIT_DATABASE_URL: Optional[str] = None
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -221,6 +223,14 @@ class Settings(BaseSettings):
             return None
         return self.PUBLIC_BASE_URL.rstrip("/")
 
+    @property
+    def plugin_mode(self) -> bool:
+        return bool(self.WAMCP_PLUGIN_MODE)
+
+    @property
+    def audit_database_url(self) -> Optional[str]:
+        return self.AUDIT_DATABASE_URL
+
     def get_webhook_callback_url(self) -> str:
         """Get the full webhook callback URL for Meta."""
         if self.public_base_url:
@@ -229,37 +239,38 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_required_settings(self):
-        if self.verify_webhook_signature and not self.whatsapp_app_secret:
-            raise ValueError(
-                "VERIFY_WEBHOOK_SIGNATURE=true requires WHATSAPP_APP_SECRET (or aliases WHATSAPP_SECRET / APP_SECRET)."
-            )
-
-        # Validate that phone number ID is not a placeholder
-        if _is_placeholder(self.whatsapp_phone_number_id):
-            # Debug: log the actual values being checked
-            import sys
-            debug_msg = (
-                f"DEBUG: WHATSAPP_PHONE_NUMBER_ID_PRIMARY={self.WHATSAPP_PHONE_NUMBER_ID_PRIMARY} | "
-                f"WHATSAPP_PHONE_NUMBER_ID_ALIAS_SHORT={self.WHATSAPP_PHONE_NUMBER_ID_ALIAS_SHORT} | "
-                f"Resolved to: {self.whatsapp_phone_number_id}"
-            )
-            print(debug_msg, file=sys.stderr)
-            raise ValueError(
-                f"WHATSAPP_PHONE_NUMBER_ID is set to a placeholder value '{self.whatsapp_phone_number_id}'. "
-                "Please configure it with your actual phone number ID from Meta (e.g., 875171289009578). "
-                "Get this from Meta App Dashboard > WhatsApp > Phone Numbers."
-            )
-
-        if self.DEBUG_ECHO_MODE:
-            if not self.whatsapp_access_token or _is_placeholder(self.whatsapp_access_token):
+        if not self.plugin_mode:
+            if self.verify_webhook_signature and not self.whatsapp_app_secret:
                 raise ValueError(
-                    "DEBUG_ECHO_MODE=true requires a valid WHATSAPP_ACCESS_TOKEN (not a placeholder like 'replace_me'). "
-                    "Get this from Meta App Dashboard > WhatsApp > API Setup."
+                    "VERIFY_WEBHOOK_SIGNATURE=true requires WHATSAPP_APP_SECRET (or aliases WHATSAPP_SECRET / APP_SECRET)."
                 )
-            if not self.whatsapp_phone_number_id:
+
+            # Validate that phone number ID is not a placeholder
+            if _is_placeholder(self.whatsapp_phone_number_id):
+                import sys
+
+                debug_msg = (
+                    f"DEBUG: WHATSAPP_PHONE_NUMBER_ID_PRIMARY={self.WHATSAPP_PHONE_NUMBER_ID_PRIMARY} | "
+                    f"WHATSAPP_PHONE_NUMBER_ID_ALIAS_SHORT={self.WHATSAPP_PHONE_NUMBER_ID_ALIAS_SHORT} | "
+                    f"Resolved to: {self.whatsapp_phone_number_id}"
+                )
+                print(debug_msg, file=sys.stderr)
                 raise ValueError(
-                    "DEBUG_ECHO_MODE=true requires WHATSAPP_PHONE_NUMBER_ID (or alias PHONE_NUMBER_ID)."
+                    f"WHATSAPP_PHONE_NUMBER_ID is set to a placeholder value '{self.whatsapp_phone_number_id}'. "
+                    "Please configure it with your actual phone number ID from Meta (e.g., 875171289009578). "
+                    "Get this from Meta App Dashboard > WhatsApp > Phone Numbers."
                 )
+
+            if self.DEBUG_ECHO_MODE:
+                if not self.whatsapp_access_token or _is_placeholder(self.whatsapp_access_token):
+                    raise ValueError(
+                        "DEBUG_ECHO_MODE=true requires a valid WHATSAPP_ACCESS_TOKEN (not a placeholder like 'replace_me'). "
+                        "Get this from Meta App Dashboard > WhatsApp > API Setup."
+                    )
+                if not self.whatsapp_phone_number_id:
+                    raise ValueError(
+                        "DEBUG_ECHO_MODE=true requires WHATSAPP_PHONE_NUMBER_ID (or alias PHONE_NUMBER_ID)."
+                    )
 
         return self
 

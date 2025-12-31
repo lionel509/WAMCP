@@ -42,6 +42,10 @@ class IngestService:
         3. Store Raw Event
         4. Parse & Upsert Entities
         """
+        if settings.plugin_mode:
+            logger.warning("Webhook ingestion attempted while plugin mode is enabled; rejecting request.")
+            raise HTTPException(status_code=403, detail="Webhook ingestion is disabled in plugin mode")
+
         if not request_id:
             request_id = str(uuid.uuid4())
         

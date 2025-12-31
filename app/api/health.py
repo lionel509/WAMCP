@@ -28,11 +28,12 @@ async def readiness():
     Used to determine if the service should receive traffic.
     """
     checks = {}
+    plugin_mode = settings.plugin_mode
     
     # Postgres
     try:
         from sqlalchemy.ext.asyncio import create_async_engine
-        engine = create_async_engine(settings.database_url or "postgresql+asyncpg://localhost/postgres")
+        engine = create_async_engine(settings.DATABASE_URL or "postgresql+asyncpg://localhost/postgres")
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
         await engine.dispose()
@@ -41,32 +42,31 @@ async def readiness():
         logger.error(f"Postgres readiness check failed: {e}")
         checks["postgres"] = "error"
     
-    # Redis
-    try:
-        import redis.asyncio as redis
-        redis_url = settings.redis_url or "redis://localhost:6379/0"
-        r = redis.from_url(redis_url)
-        await r.ping()
-        await r.close()
-        checks["redis"] = "ok"
-    except Exception as e:
-        logger.error(f"Redis readiness check failed: {e}")
-        checks["redis"] = "error"
-    
-    # MinIO (basic connectivity)
-    try:
-        # Try a simple HEAD request to MinIO
-        minio_endpoint = settings.minio_endpoint or "localhost:9000"
-        minio_url = f"http://{minio_endpoint}/minio/health/live"
-        async with httpx.AsyncClient() as client:
-            response = await client.get(minio_url, timeout=2.0)
-            if response.status_code == 200:
-                checks["minio"] = "ok"
-            else:
-                checks["minio"] = "error"
-    except Exception as e:
-        logger.error(f"MinIO readiness check failed: {e}")
-        checks["minio"] = "error"
+    if not plugin_mode:
+        try:
+            import redis.asyncio as redis
+            redis_url = settings.REDIS_URL or "redis://localhost:6379/0"
+            r = redis.from_url(redis_url)
+            await r.ping()
+            await r.close()
+            checks["redis"] = "ok"
+        except Exception as e:
+            logger.error(f"Redis readiness check failed: {e}")
+            checks["redis"] = "error"
+        
+        # MinIO (basic connectivity)
+        try:
+            minio_endpoint = settings.MINIO_ENDPOINT or "localhost:9000"
+            minio_url = f"http://{minio_endpoint}/minio/health/live"
+            async with httpx.AsyncClient() as client:
+                response = await client.get(minio_url, timeout=2.0)
+                if response.status_code == 200:
+                    checks["minio"] = "ok"
+                else:
+                    checks["minio"] = "error"
+        except Exception as e:
+            logger.error(f"MinIO readiness check failed: {e}")
+            checks["minio"] = "error"
     
     # If all checks pass, return 200; else 503
     all_ok = all(v == "ok" for v in checks.values())
