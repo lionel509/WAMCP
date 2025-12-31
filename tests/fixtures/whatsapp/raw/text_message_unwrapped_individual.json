@@ -1,0 +1,27 @@
+{
+    "messaging_product": "whatsapp",
+    "metadata": {
+        "display_phone_number": "15556422328",
+        "phone_number_id": "875171289009578"
+    },
+    "contacts": [
+        {
+            "profile": {
+                "name": "Lionel Weng"
+            },
+            "wa_id": "15169007810"
+        }
+    ],
+    "messages": [
+        {
+            "from": "15169007810",
+            "id": "wamid.HBgLMTUxNikwMDc4MTAVAaASGBQzQUI5MkM5QTMyREQ4RTJGNUYzQQA=",
+            "timestamp": "1767133313",
+            "text": {
+                "body": "Test"
+            },
+            "type": "text"
+        }
+    ],
+    "field": "messages"
+}

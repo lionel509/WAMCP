@@ -1,0 +1,41 @@
+# OS
+.DS_Store
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.so
+*.pyd
+*.egg-info/
+.eggs/
+*.egg
+build/
+dist/
+
+# Environments
+.env
+.env.*
+!.env.example
+venv/
+.venv/
+.envrc
+
+# Tooling caches
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.mypy_cache/
+ruff_cache/
+.pyre/
+.cache/
+.dmypy.json
+.ipynb_checkpoints
+
+# Editors/IDE
+.vscode/
+.idea/
+
+# Logs and temp
+logs/
+*.log
