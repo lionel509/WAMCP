@@ -19,7 +19,7 @@ A production-grade system for ingesting WhatsApp webhooks, processing them, and 
    # Edit .env with your credentials
    ```
 
-2. **Start Services**:
+2. **Start Services** (local development):
 
    ```bash
    make dev
@@ -27,7 +27,15 @@ A production-grade system for ingesting WhatsApp webhooks, processing them, and 
 
    This starts Postgres, Redis, MinIO, API, Worker, and MCP services.
 
-3. **Migrations**:
+3. **Start with Cloudflare Tunnel** (if exposing webhooks to Meta):
+
+   ```bash
+   make dev-tunnel
+   ```
+
+   See [Cloudflare Tunnel Setup](#cloudflare-tunnel-setup) below.
+
+4. **Migrations**:
    Migrations are run automatically on startup, or manually:
 
    ```bash
@@ -54,12 +62,128 @@ A production-grade system for ingesting WhatsApp webhooks, processing them, and 
   ./scripts/send_test_webhook.sh
   ```
 
+## Sending & Receiving WhatsApp Messages
+
+### Receiving Messages (Webhooks from Meta)
+
+Your app automatically receives and stores all incoming WhatsApp messages via the webhook endpoint.
+
+**Setup:**
+1. Start the tunnel: `make tunnel`
+2. Get your public URL: `make tunnel-url`
+3. Set `PUBLIC_BASE_URL` in `.env` to your tunnel URL (optional, API logs this on startup)
+4. Configure Meta webhook callback:
+   - **Callback URL**: `https://<your-url>/webhooks/whatsapp`
+   - **Verify Token**: Must match `WHATSAPP_VERIFY_TOKEN` from `.env` (default: `dev-verify-token`)
+
+**Test the webhook:**
+```bash
+curl -X GET "https://<your-tunnel-url>/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=dev-verify-token&hub.challenge=test_challenge"
+```
+
+When Meta sends a webhook, your API:
+- Verifies the signature using `WHATSAPP_APP_SECRET`
+- Stores the raw event in the database
+- Parses and normalizes the message
+- Stores conversations, participants, and messages
+- Optional: Triggers debug echo (auto-reply) if enabled
+
+**View received messages:**
+```bash
+curl -H "X-Admin-Api-Key: admin123" http://localhost:8000/admin/conversations
+curl -H "X-Admin-Api-Key: admin123" http://localhost:8000/admin/conversations/{id}/messages
+```
+
+**Troubleshooting:**
+- **Not receiving messages?** Check that:
+  1. Meta webhook callback URL is set correctly in [App Dashboard > WhatsApp > Configuration](https://developers.facebook.com/apps)
+  2. Verify Token matches `WHATSAPP_VERIFY_TOKEN` in your `.env`
+  3. If using a tunnel: `PUBLIC_BASE_URL` in `.env` matches your tunnel URL
+  4. API logs show `Webhook Callback URL for Meta: ...` on startup
+  5. Enable `DEBUG_ECHO_MODE=true` to auto-reply and test end-to-end
+
+### Sending Messages
+
+Your app can send three types of WhatsApp messages:
+
+#### 1. **Text Messages**
+
+**Via API:**
+```bash
+curl -X POST http://localhost:8000/send/text \
+  -H "X-Admin-Api-Key: admin123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "15169007810",
+    "body": "Hello from WAMCP!",
+    "preview_url": false
+  }'
+```
+
+**Via Script:**
+```bash
+./scripts/send_whatsapp_message.sh 15169007810 (will eventually call the API)
+```
+
+#### 2. **Template Messages**
+
+Pre-approved message templates from Meta (e.g., `hello_world`).
+
+**Via API:**
+```bash
+curl -X POST http://localhost:8000/send/template \
+  -H "X-Admin-Api-Key: admin123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "15169007810",
+    "template_name": "hello_world",
+    "language_code": "en_US",
+    "parameters": ["John"]
+  }'
+```
+
+#### 3. **Media Messages**
+
+Send images, documents, audio, or video.
+
+**Via API:**
+```bash
+curl -X POST http://localhost:8000/send/media \
+  -H "X-Admin-Api-Key: admin123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "15169007810",
+    "media_type": "image",
+    "media_url": "https://example.com/image.jpg",
+    "caption": "Check this out!"
+  }'
+```
+
+### Debug Echo Mode
+
+Auto-reply to incoming messages when `DEBUG_ECHO_MODE=true`.
+
+**Configuration:**
+```env
+DEBUG_ECHO_MODE=true
+DEBUG_ECHO_ALLOWLIST_E164=5169007810  # Only echo replies from this number
+DEBUG_ECHO_RATE_LIMIT_SECONDS=60      # Don't echo same person more than once per 60s
+DEBUG_ECHO_GROUP_FALLBACK=false       # Don't auto-reply in groups
+```
+
+When enabled:
+- User sends: "Hello"
+- Bot replies: "Received: Hello"
+
+⚠️ **Keep `DEBUG_ECHO_MODE=false` in production** to avoid unintended replies.
+
 ## Config
 
-- Canonical WhatsApp/Meta vars: `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_WABA_ID`, `WHATSAPP_API_VERSION`, `WHATSAPP_BASE_URL`, `VERIFY_WEBHOOK_SIGNATURE`.
-- Debug controls: `DEBUG_ECHO_MODE`, `DEBUG_ECHO_ALLOWLIST_E164`, `DEBUG_ECHO_RATE_LIMIT_SECONDS`, `DEBUG_ECHO_GROUP_FALLBACK` (keep `DEBUG_ECHO_MODE=false` in production).
-- Core services: `DATABASE_URL`, `REDIS_URL`, `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET`, `ADMIN_API_KEY`.
-- Legacy alias support (canonical wins):
+- **Public URL** (optional): `PUBLIC_BASE_URL` - Set when using a reverse proxy, tunnel, or production domain. Used for webhook callback URLs and external links. API logs this on startup.
+- **Canonical WhatsApp/Meta vars**: `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_WABA_ID`, `WHATSAPP_API_VERSION`, `WHATSAPP_BASE_URL`, `VERIFY_WEBHOOK_SIGNATURE`.
+- **Debug controls**: `DEBUG_ECHO_MODE`, `DEBUG_ECHO_ALLOWLIST_E164`, `DEBUG_ECHO_RATE_LIMIT_SECONDS`, `DEBUG_ECHO_GROUP_FALLBACK` (keep `DEBUG_ECHO_MODE=false` in production).
+- **Core services**: `DATABASE_URL`, `REDIS_URL`, `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET`, `ADMIN_API_KEY`.
+- **Legacy alias support** (canonical wins):
   - `WHATSAPP_ACCESS_TOKEN` ← `WHATSAPP_API_TOKEN`, `WHATSAPP_API_KEY`, `WHATSAPP_TOKEN`
   - `WHATSAPP_VERIFY_TOKEN` ← `WHATSAPP_WEBHOOK_VERIFY_TOKEN`, `WHATSAPP_VERIFY`
   - `WHATSAPP_APP_SECRET` ← `WHATSAPP_SECRET`, `APP_SECRET`
@@ -67,7 +191,10 @@ A production-grade system for ingesting WhatsApp webhooks, processing them, and 
   - `WHATSAPP_PHONE_NUMBER_ID` ← `PHONE_NUMBER_ID`
   - `WHATSAPP_WABA_ID` ← `WHATSAPP_BUSINESS_ACCOUNT_ID`, `WABA_ID`
   - `MINIO_BUCKET` ← `MINIO_BUCKET_DOCUMENTS`
-  Always provide `WHATSAPP_APP_SECRET` when `VERIFY_WEBHOOK_SIGNATURE=true`.
+  
+**Important:**
+  - Always provide `WHATSAPP_APP_SECRET` when `VERIFY_WEBHOOK_SIGNATURE=true`.
+  - For tunnels/proxies: Set `PUBLIC_BASE_URL` to match your tunnel URL (e.g., `https://my-tunnel.cloudflare.com`) and use it in Meta's webhook callback URL.
 
 ## MCP Configuration (Claude Desktop)
 
@@ -112,6 +239,68 @@ Each admin request is audited (`actor=admin_api`, `action=read`, key parameters 
 ```bash
 curl -H "X-Admin-Api-Key: $ADMIN_API_KEY" http://localhost:8000/admin/conversations
 ```
+
+## Cloudflare Tunnel Setup
+
+To expose your local stack to Meta WhatsApp webhooks during development, use **Quick Tunnel** (auto-generates a public URL instantly—no token needed).
+
+### Quick Tunnel (Recommended for Local Dev)
+
+Perfect for testing Meta webhooks on your local machine.
+
+**Step 1: Start the tunnel**
+```bash
+make tunnel
+```
+
+This starts your entire stack including a Cloudflare tunnel that exposes your API to the internet.
+
+**Step 2: Find your public URL**
+```bash
+make tunnel-url
+```
+
+This prints your temporary public URL (e.g., `https://abc123-def456.trycloudflare.com`). It changes every time you restart.
+
+**Step 3: Configure Meta Webhook**
+1. Go to **Meta App Dashboard** → **WhatsApp** → **Configuration**
+2. Set **Callback URL**: `https://<your-public-url>/webhooks/whatsapp`
+3. Set **Verify Token**: Must match `WHATSAPP_VERIFY_TOKEN` from `.env`
+4. Click **Verify and Save**
+
+**Step 4: Test it**
+```bash
+# Monitor logs
+make tunnel-logs
+
+# In another terminal, test the webhook
+curl -X GET "https://<your-public-url>/webhooks/whatsapp?hub.challenge=test"
+```
+
+### Persistent Tunnel (Using Token)
+
+If you need a stable hostname that persists across restarts, follow the instructions in [infra/cloudflared/README.md](infra/cloudflared/README.md).
+
+### Useful Commands
+
+```bash
+# Start stack with tunnel
+make tunnel
+
+# View tunnel connection status
+make tunnel-logs
+
+# Extract the public URL (best-effort)
+make tunnel-url
+
+# Stop everything
+make down
+```
+
+⚠️ **Important Notes:**
+- Quick tunnels generate a new random URL on each restart
+- Never use quick tunnel or expose credentials in production
+- The tunnel only exposes the API; Postgres, Redis, MinIO remain internal
 
 ## Document Extraction
 

@@ -39,3 +39,7 @@ ruff_cache/
 # Logs and temp
 logs/
 *.log
+
+# Cloudflare Tunnel local state and credentials (never commit)
+.cloudflared/
+infra/cloudflared/credentials.json

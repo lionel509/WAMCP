@@ -61,6 +61,11 @@ services:
         condition: service_started
     ports:
       - "${API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-wamcp}
       - REDIS_URL=redis://redis:6379/0
@@ -178,6 +183,15 @@ services:
     volumes:
       - .:/app
 
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url ${QUICK_TUNNEL_TARGET_URL}
+    depends_on:
+      api:
+        condition: service_healthy
+    profiles:
+      - tunnel
 volumes:
   postgres_data:
   minio_data:

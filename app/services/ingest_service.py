@@ -26,6 +26,7 @@ from app.db.models import (
 )
 from app.services.whatsapp_parser import parse_webhook_payload, NormalizedEvent
 from app.security.webhook_verify import verify_signature
+from app.services.structured_logging import StructuredLogger
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ class IngestService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def ingest_webhook(self, raw_body: bytes, headers: dict) -> Dict[str, Any]:
+    async def ingest_webhook(self, raw_body: bytes, headers: dict, request_id: str = None) -> Dict[str, Any]:
         """
         Process inbound webhook.
         1. Calculate Hash & Check Idempotency
@@ -41,6 +42,9 @@ class IngestService:
         3. Store Raw Event
         4. Parse & Upsert Entities
         """
+        if not request_id:
+            request_id = str(uuid.uuid4())
+        
         request_hash = hashlib.sha256(raw_body).hexdigest()
         
         # 1. Signature Verification (First Defense)
@@ -50,7 +54,7 @@ class IngestService:
             sig_valid = verify_signature(raw_body, sig_header, settings.whatsapp_app_secret or "")
             if not sig_valid:
                 # Strictly reject if verification fails
-                logger.warning(f"Signature verification failed. Hash: {request_hash}")
+                logger.warning(f"Signature verification failed. request_id={request_id}, hash={request_hash[:8]}")
                 raise HTTPException(status_code=401, detail="Invalid Signature")
 
         # 2. Idempotency Check
@@ -59,14 +63,46 @@ class IngestService:
         existing_event = result.scalar_one_or_none()
         
         if existing_event:
-            logger.info(f"Duplicate webhook event ignored. Hash: {request_hash}")
+            logger.info(f"Duplicate webhook event ignored. request_id={request_id}, hash={request_hash[:8]}")
             return {"status": "ignored", "reason": "duplicate_event", "id": str(existing_event.id)}
 
         try:
             payload_json = json.loads(raw_body)
         except json.JSONDecodeError:
-            logger.error("Invalid JSON body")
+            logger.error(f"Invalid JSON body. request_id={request_id}")
+            StructuredLogger.log_webhook_error(request_id, "Invalid JSON body", "JSONDecodeError")
             raise HTTPException(status_code=400, detail="Invalid JSON")
+
+        # Determine envelope type
+        envelope_type = "unknown"
+        messages_count = 0
+        statuses_count = 0
+        phone_number_id = None
+        
+        if "entry" in payload_json:
+            envelope_type = "enveloped"
+            for entry in payload_json.get("entry", []):
+                for change in entry.get("changes", []):
+                    value = change.get("value", {})
+                    messages_count += len(value.get("messages", []))
+                    statuses_count += len(value.get("statuses", []))
+                    if not phone_number_id and "metadata" in value:
+                        phone_number_id = value["metadata"].get("phone_number_id")
+        else:
+            envelope_type = "unwrapped"
+            messages_count = len(payload_json.get("messages", []))
+            statuses_count = len(payload_json.get("statuses", []))
+            phone_number_id = payload_json.get("metadata", {}).get("phone_number_id")
+        
+        StructuredLogger.log_webhook_received(
+            request_id=request_id,
+            request_hash=request_hash,
+            signature_valid=sig_valid,
+            envelope_type=envelope_type,
+            messages_count=messages_count,
+            statuses_count=statuses_count,
+            phone_number_id=phone_number_id
+        )
 
         # 3. Store Raw Event
         raw_event = RawEvent(
@@ -81,27 +117,49 @@ class IngestService:
         
 
         # 4. Parse & Normalize
-        normalized_events = parse_webhook_payload(payload_json)
+        try:
+            normalized_events = parse_webhook_payload(payload_json)
+        except Exception as e:
+            logger.error(f"Failed to parse webhook payload: {str(e)}", exc_info=True)
+            StructuredLogger.log_webhook_parsed(
+                request_id=request_id,
+                normalized_events_count=0,
+                parse_status="failed",
+                parse_error=str(e)[:100]
+            )
+            await self.db.commit()
+            return {"status": "parse_failed", "error": str(e)[:100], "raw_event_id": str(raw_event.id)}
+        
+        StructuredLogger.log_webhook_parsed(
+            request_id=request_id,
+            normalized_events_count=len(normalized_events),
+            parse_status="ok"
+        )
         
         processed_messages = []
         
         for event in normalized_events:
-            if event.message_id: # Only process if it has a message ID (some status updates might not be interesting if no ID? Actually status has ID)
-                await self._process_normalized_event(event, raw_event.id)
+            if event.message_id:
+                await self._process_normalized_event(event, raw_event.id, request_id)
                 processed_messages.append(event.message_id)
 
         await self.db.commit()
         return {"status": "processed", "count": len(processed_messages), "raw_event_id": str(raw_event.id)}
 
-    async def _process_normalized_event(self, event: NormalizedEvent, raw_event_id: uuid.UUID):
-        # A. Upsert Conversation
-        # We need to be careful with concurrency here. 
-        # Ideally, we lock or handle integrity errors.
-        # "ON CONFLICT" logic.
+    async def _process_normalized_event(self, event: NormalizedEvent, raw_event_id: uuid.UUID, request_id: str = None):
+        if not request_id:
+            request_id = "unknown"
         
-        # Check / Insert Conversation
-        # We can implement a clean upsert or check-then-insert.
-        # For simplicity and perf, we do 'get or create'.
+        # Log normalized event
+        StructuredLogger.log_message_normalized(
+            request_id=request_id,
+            message_id=event.message_id or "unknown",
+            conversation_type=event.conversation_type,
+            conversation_id=event.conversation_id,
+            sender_participant_id=event.sender_participant_id or "unknown",
+            message_type=event.message_type,
+            sent_at=event.timestamp.isoformat() if event.timestamp else None
+        )
         
         stmt = select(Conversation).where(Conversation.id == event.conversation_id)
         result = await self.db.execute(stmt)
@@ -266,7 +324,8 @@ class IngestService:
                 )
                 self.db.add(new_msg)
                 
-                # Check for documents/media
+                # Log message persistence
+                StructuredLogger.log_message_persisted(request_id, event.message_id, inserted=True)
                 # If message_type is image/document/audio/video, we create Document entry?
                 # User schema: `documents` table. `doc_type`, `storage_key_raw`, etc.
                 # If the payload has media, we should kick off extraction.
@@ -302,6 +361,7 @@ class IngestService:
                 
                 # Enqueue Tasks
                 if event.direction == "inbound" and settings.debug_echo_mode:
+                     logger.info(f"Queueing debug echo task for message_id={new_msg.id}, to={new_msg.participant_id}")
                      from app.workers.tasks import handle_debug_echo_v2
                      handle_debug_echo_v2.delay(
                          business_phone_id=event.business_phone_number_id,
@@ -309,5 +369,9 @@ class IngestService:
                          to=new_msg.participant_id,
                          original_body=new_msg.text_body or "[Media]"
                      )
+                     logger.info(f"Debug echo task queued successfully")
+            else:
+                # Message already exists
+                StructuredLogger.log_message_persisted(request_id, event.message_id, inserted=False)
 
         return

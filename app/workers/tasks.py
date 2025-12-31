@@ -30,7 +30,7 @@ def handle_debug_echo(message_id: str, to: str, original_body: str):
         return 
 
     # 1. Allowlist Check
-    allowed_numbers = [n.strip() for n in settings.DEBUG_ECHO_ALLOWLIST_E164.split(",") if n.strip()]
+    allowed_numbers = [n.strip() for n in settings.debug_echo_allowlist_e164]
     allowed_groups = [g.strip() for g in settings.DEBUG_ECHO_ALLOW_GROUP_IDS.split(",") if g.strip()]
     
     is_allowed = False
@@ -79,38 +79,79 @@ def handle_debug_echo(message_id: str, to: str, original_body: str):
 
 @celery.task(name="app.workers.tasks.handle_debug_echo_v2")
 def handle_debug_echo_v2(business_phone_id: str, message_id: str, to: str, original_body: str):
+    logger.info(f"[TASK START] handle_debug_echo_v2 called with: business_phone_id={business_phone_id}, to={to}, original_body={original_body}")
+    
     if not settings.DEBUG_ECHO_MODE:
+        logger.info("Debug echo skipped (DEBUG_ECHO_MODE=false)")
         return 
 
-    allowed_numbers = [n.strip() for n in settings.DEBUG_ECHO_ALLOWLIST_E164.split(",") if n.strip()]
-    allowed_groups = [g.strip() for g in settings.DEBUG_ECHO_ALLOW_GROUP_IDS.split(",") if g.strip()]
+    def _normalize_phone(value: str) -> str:
+        # Keep digits only so allowlist entries can omit "+" or country code.
+        return "".join(ch for ch in value if ch.isdigit())
+
+    allowed_numbers = [_normalize_phone(n) for n in settings.debug_echo_allowlist_e164 if n.strip()]
+    allowed_groups = [g.strip() for g in settings.debug_echo_allow_group_ids if g.strip()]
     
     is_group = "@g.us" in to
     is_allowed = False
+    to_normalized = _normalize_phone(to)
     
     if is_group:
-         if to in allowed_groups:
+        if allowed_groups:
+            is_allowed = to.strip() in allowed_groups
+        else:
             is_allowed = True
     else:
-        if to in allowed_numbers:
+        if allowed_numbers:
+            for allowed in allowed_numbers:
+                if to_normalized == allowed or to_normalized.endswith(allowed) or allowed.endswith(to_normalized):
+                    is_allowed = True
+                    break
+        else:
             is_allowed = True
 
     if not is_allowed:
-        if allowed_numbers or allowed_groups:
-             logger.info("Not allowed")
-             return
+        logger.info(
+            "[TASK] Debug echo skipped (not in allowlist): to=%s allow_numbers=%s allow_groups=%s",
+            to,
+            allowed_numbers,
+            allowed_groups,
+        )
+        return
+    
+    logger.info(f"[TASK] Passed allowlist check for {to}")
     
     # Rate Limit
     if redis_client.set(f"rate_limit:echo:{to}", "1", ex=settings.DEBUG_ECHO_RATE_LIMIT_SECONDS, nx=True) is None:
-         logger.info("Rate limit hit")
-         return
+        logger.info(f"[TASK] Debug echo rate limit hit for {to}")
+        return
 
-    ack_body = f"DEBUG ECHO: Received {message_id}"
+    logger.info(f"[TASK] Passed rate limit check, preparing to send echo")
+
+    preview = (original_body or "").strip()
+    if len(preview) > 256:
+        preview = preview[:253] + "..."
+    ack_body = f"DEBUG ECHO: {preview or '[no body]'} (id: {message_id})"
     
     async def _send():
-        await whatsapp_client.send_text_message(business_phone_id, to, ack_body)
+        res = await whatsapp_client.send_text_message(business_phone_id, to, ack_body)
+        return res
     
-    asyncio.run(_send())
+    try:
+        logger.info(f"[TASK] Calling _send() for {to}")
+        res = asyncio.run(_send())
+        logger.info(f"[TASK] _send() returned: {res}")
+        if res and "error" in res:
+            logger.error(
+                "[TASK] Debug echo send failed: to=%s phone_id=%s error=%s",
+                to,
+                business_phone_id,
+                res.get("error"),
+            )
+        else:
+            logger.info("[TASK] Debug echo sent successfully: to=%s phone_id=%s", to, business_phone_id)
+    except Exception as e:
+        logger.exception("[TASK] Debug echo send raised exception: to=%s phone_id=%s exception=%s", to, business_phone_id, str(e))
 
 
 @celery.task(name="app.workers.tasks.process_document")

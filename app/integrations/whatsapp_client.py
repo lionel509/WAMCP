@@ -38,10 +38,12 @@ class WhatsAppClient:
             return {"error": "no_phone_number_id"}
 
         url = f"{self.base_url}/{self.api_version}/{active_phone_number_id}/messages"
-        
+        recipient_type = "group" if "@g.us" in to else "individual"
+
         payload = {
             "messaging_product": "whatsapp",
-            "recruit_type": "individual", # or group? usually inferred from ID or 'to'
+            # WA Cloud API defaults to individual; set explicitly so group IDs work too.
+            "recipient_type": recipient_type,
             "to": to,
             "type": "text",
             "text": {

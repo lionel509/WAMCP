@@ -19,6 +19,40 @@ def _split_csv(value: str | None) -> List[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def _is_placeholder(value: Optional[str]) -> bool:
+    """
+    Check if a value is a placeholder or placeholder-like.
+    
+    Returns True if value is:
+    - None, empty string, or whitespace
+    - "string" (literal)
+    - "replace_me", "replaceme"
+    - "changeme"
+    - "todo" (case-insensitive)
+    - Starts with "YOUR_" or ends with "_PLACEHOLDER"
+    """
+    if not value or not isinstance(value, str):
+        return False
+    
+    normalized = value.strip().lower()
+    
+    placeholders = {
+        "string",
+        "replace_me",
+        "replaceme",
+        "changeme",
+        "todo",
+    }
+    
+    if normalized in placeholders:
+        return True
+    
+    if normalized.startswith("your_") or normalized.endswith("_placeholder"):
+        return True
+    
+    return False
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
 
@@ -88,6 +122,10 @@ class Settings(BaseSettings):
 
     # Admin
     ADMIN_API_KEY: str = "dev-admin-key"
+
+    # Public URL (for external links, webhooks, etc.)
+    # Leave empty to use the request URL (works for local dev)
+    PUBLIC_BASE_URL: Optional[str] = Field(default=None, alias="PUBLIC_BASE_URL")
 
     @property
     def whatsapp_verify_token(self) -> Optional[str]:
@@ -176,6 +214,19 @@ class Settings(BaseSettings):
     def admin_api_key(self) -> str:
         return self.ADMIN_API_KEY
 
+    @property
+    def public_base_url(self) -> Optional[str]:
+        """Get the public base URL, sanitized (no trailing slash)."""
+        if not self.PUBLIC_BASE_URL:
+            return None
+        return self.PUBLIC_BASE_URL.rstrip("/")
+
+    def get_webhook_callback_url(self) -> str:
+        """Get the full webhook callback URL for Meta."""
+        if self.public_base_url:
+            return f"{self.public_base_url}/webhooks/whatsapp"
+        return "/webhooks/whatsapp"  # Relative URL when no public URL set
+
     @model_validator(mode="after")
     def _validate_required_settings(self):
         if self.verify_webhook_signature and not self.whatsapp_app_secret:
@@ -183,10 +234,27 @@ class Settings(BaseSettings):
                 "VERIFY_WEBHOOK_SIGNATURE=true requires WHATSAPP_APP_SECRET (or aliases WHATSAPP_SECRET / APP_SECRET)."
             )
 
+        # Validate that phone number ID is not a placeholder
+        if _is_placeholder(self.whatsapp_phone_number_id):
+            # Debug: log the actual values being checked
+            import sys
+            debug_msg = (
+                f"DEBUG: WHATSAPP_PHONE_NUMBER_ID_PRIMARY={self.WHATSAPP_PHONE_NUMBER_ID_PRIMARY} | "
+                f"WHATSAPP_PHONE_NUMBER_ID_ALIAS_SHORT={self.WHATSAPP_PHONE_NUMBER_ID_ALIAS_SHORT} | "
+                f"Resolved to: {self.whatsapp_phone_number_id}"
+            )
+            print(debug_msg, file=sys.stderr)
+            raise ValueError(
+                f"WHATSAPP_PHONE_NUMBER_ID is set to a placeholder value '{self.whatsapp_phone_number_id}'. "
+                "Please configure it with your actual phone number ID from Meta (e.g., 875171289009578). "
+                "Get this from Meta App Dashboard > WhatsApp > Phone Numbers."
+            )
+
         if self.DEBUG_ECHO_MODE:
-            if not self.whatsapp_access_token:
+            if not self.whatsapp_access_token or _is_placeholder(self.whatsapp_access_token):
                 raise ValueError(
-                    "DEBUG_ECHO_MODE=true requires WHATSAPP_ACCESS_TOKEN (or aliases WHATSAPP_API_TOKEN / WHATSAPP_API_KEY / WHATSAPP_TOKEN)."
+                    "DEBUG_ECHO_MODE=true requires a valid WHATSAPP_ACCESS_TOKEN (not a placeholder like 'replace_me'). "
+                    "Get this from Meta App Dashboard > WhatsApp > API Setup."
                 )
             if not self.whatsapp_phone_number_id:
                 raise ValueError(

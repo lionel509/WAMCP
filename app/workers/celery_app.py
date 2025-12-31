@@ -8,5 +8,12 @@ celery = Celery(
 )
 
 celery.conf.task_routes = {
-    "app.workers.tasks.*": {"queue": "default"},
+    "app.workers.tasks.*": {"queue": "celery"},
 }
+
+celery.conf.task_default_queue = "celery"
+celery.conf.task_default_exchange = "celery"
+celery.conf.task_default_routing_key = "celery"
+
+# Autodiscover tasks from app.workers.tasks module
+celery.conf.imports = ("app.workers.tasks",)
