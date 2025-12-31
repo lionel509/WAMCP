@@ -1,3 +1,4 @@
+
 services:
   db:
     image: postgres:16-alpine
@@ -50,6 +51,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile.api
     restart: always
+    env_file: .env
     depends_on:
       db:
         condition: service_healthy
@@ -66,7 +68,21 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
       - MINIO_SECURE=false
+      - MINIO_BUCKET=${MINIO_BUCKET:-documents}
       - APP_ENV=dev
+      - WHATSAPP_VERIFY_TOKEN=${WHATSAPP_VERIFY_TOKEN:-}
+      - WHATSAPP_ACCESS_TOKEN=${WHATSAPP_ACCESS_TOKEN:-}
+      - WHATSAPP_APP_SECRET=${WHATSAPP_APP_SECRET:-}
+      - WHATSAPP_PHONE_NUMBER_ID=${WHATSAPP_PHONE_NUMBER_ID:-}
+      - WHATSAPP_WABA_ID=${WHATSAPP_WABA_ID:-}
+      - WHATSAPP_API_VERSION=${WHATSAPP_API_VERSION:-v24.0}
+      - WHATSAPP_BASE_URL=${WHATSAPP_BASE_URL:-https://graph.facebook.com}
+      - VERIFY_WEBHOOK_SIGNATURE=${VERIFY_WEBHOOK_SIGNATURE:-true}
+      - DEBUG_ECHO_MODE=${DEBUG_ECHO_MODE:-false}
+      - DEBUG_ECHO_ALLOWLIST_E164=${DEBUG_ECHO_ALLOWLIST_E164:-}
+      - DEBUG_ECHO_RATE_LIMIT_SECONDS=${DEBUG_ECHO_RATE_LIMIT_SECONDS:-60}
+      - DEBUG_ECHO_GROUP_FALLBACK=${DEBUG_ECHO_GROUP_FALLBACK:-false}
+      - ADMIN_API_KEY=${ADMIN_API_KEY:-admin123}
     volumes:
       - .:/app
 
@@ -75,6 +91,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile.worker
     restart: always
+    env_file: .env
     depends_on:
       db:
         condition: service_healthy
@@ -89,6 +106,20 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
       - MINIO_SECURE=false
+      - MINIO_BUCKET=${MINIO_BUCKET:-documents}
+      - WHATSAPP_VERIFY_TOKEN=${WHATSAPP_VERIFY_TOKEN:-}
+      - WHATSAPP_ACCESS_TOKEN=${WHATSAPP_ACCESS_TOKEN:-}
+      - WHATSAPP_APP_SECRET=${WHATSAPP_APP_SECRET:-}
+      - WHATSAPP_PHONE_NUMBER_ID=${WHATSAPP_PHONE_NUMBER_ID:-}
+      - WHATSAPP_WABA_ID=${WHATSAPP_WABA_ID:-}
+      - WHATSAPP_API_VERSION=${WHATSAPP_API_VERSION:-v24.0}
+      - WHATSAPP_BASE_URL=${WHATSAPP_BASE_URL:-https://graph.facebook.com}
+      - VERIFY_WEBHOOK_SIGNATURE=${VERIFY_WEBHOOK_SIGNATURE:-true}
+      - DEBUG_ECHO_MODE=${DEBUG_ECHO_MODE:-false}
+      - DEBUG_ECHO_ALLOWLIST_E164=${DEBUG_ECHO_ALLOWLIST_E164:-}
+      - DEBUG_ECHO_RATE_LIMIT_SECONDS=${DEBUG_ECHO_RATE_LIMIT_SECONDS:-60}
+      - DEBUG_ECHO_GROUP_FALLBACK=${DEBUG_ECHO_GROUP_FALLBACK:-false}
+      - ADMIN_API_KEY=${ADMIN_API_KEY:-admin123}
     volumes:
       - .:/app
 
@@ -105,6 +136,20 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
       - MINIO_SECURE=false
+      - MINIO_BUCKET=${MINIO_BUCKET:-documents}
+      - WHATSAPP_VERIFY_TOKEN=${WHATSAPP_VERIFY_TOKEN:-}
+      - WHATSAPP_ACCESS_TOKEN=${WHATSAPP_ACCESS_TOKEN:-}
+      - WHATSAPP_APP_SECRET=${WHATSAPP_APP_SECRET:-}
+      - WHATSAPP_PHONE_NUMBER_ID=${WHATSAPP_PHONE_NUMBER_ID:-}
+      - WHATSAPP_WABA_ID=${WHATSAPP_WABA_ID:-}
+      - WHATSAPP_API_VERSION=${WHATSAPP_API_VERSION:-v24.0}
+      - WHATSAPP_BASE_URL=${WHATSAPP_BASE_URL:-https://graph.facebook.com}
+      - VERIFY_WEBHOOK_SIGNATURE=${VERIFY_WEBHOOK_SIGNATURE:-true}
+      - DEBUG_ECHO_MODE=${DEBUG_ECHO_MODE:-false}
+      - DEBUG_ECHO_ALLOWLIST_E164=${DEBUG_ECHO_ALLOWLIST_E164:-}
+      - DEBUG_ECHO_RATE_LIMIT_SECONDS=${DEBUG_ECHO_RATE_LIMIT_SECONDS:-60}
+      - DEBUG_ECHO_GROUP_FALLBACK=${DEBUG_ECHO_GROUP_FALLBACK:-false}
+      - ADMIN_API_KEY=${ADMIN_API_KEY:-admin123}
     depends_on:
       - db
       - redis
@@ -116,13 +161,20 @@ services:
       context: .
       dockerfile: docker/Dockerfile.mcp
     restart: always
+    stdin_open: true
+    tty: true
+    env_file: .env
     depends_on:
       db:
         condition: service_healthy
-    ports:
-      - "8080:8080" # MCP SSE endpoint
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-wamcp}
+      - REDIS_URL=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - MINIO_SECURE=false
+      - MINIO_BUCKET=${MINIO_BUCKET:-documents}
     volumes:
       - .:/app
 

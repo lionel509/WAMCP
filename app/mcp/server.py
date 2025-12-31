@@ -1,12 +1,13 @@
 from mcp.server.fastmcp import FastMCP
 from app.mcp import tools
 import logging
+import uvicorn
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("mcp_server")
 
-# Create MCP Server
+# Create MCP Server with SSE transport
 mcp = FastMCP("WhatsAppMCP")
 
 @mcp.tool()
@@ -30,7 +31,6 @@ async def list_documents(limit: int = 20) -> dict:
     return await tools.list_documents(limit)
 
 if __name__ == "__main__":
-    # Run the server
-    # FastMCP by default runs SSE on port 8000? Or depends on `run()`.
-    # We want to expose it on port 8080 (as per docker-compose).
-    mcp.run(host="0.0.0.0", port=8080)
+    # Run the MCP server
+    # FastMCP.run() starts the server (stdio transport by default)
+    mcp.run()

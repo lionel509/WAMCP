@@ -14,7 +14,7 @@ class MinioClientWrapper:
             secret_key=settings.MINIO_SECRET_KEY,
             secure=settings.MINIO_SECURE
         )
-        self.bucket = settings.MINIO_BUCKET_DOCUMENTS
+        self.bucket = settings.minio_bucket
         self._ensure_bucket()
 
     def _ensure_bucket(self):
@@ -37,6 +37,22 @@ class MinioClientWrapper:
         except S3Error as e:
             logger.error(f"MinIO Upload Error: {e}")
             return False
+
+    def download_data(self, key: str) -> bytes | None:
+        """
+        Download object content as bytes. Caller is responsible for size checks.
+        """
+        try:
+            obj = self.client.get_object(self.bucket, key)
+            try:
+                data = obj.read()
+                return data
+            finally:
+                obj.close()
+                obj.release_conn()
+        except S3Error as e:
+            logger.error(f"MinIO Download Error for {key}: {e}")
+            return None
 
     def get_presigned_url(self, key: str, expires_sec: int = 3600):
         try:

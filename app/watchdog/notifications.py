@@ -18,7 +18,7 @@ async def send_alert(alert_name: str, details: dict):
     logger.error(msg)
     
     if settings.WATCHDOG_NOTIFY_MODE == "admin_whatsapp_debug":
-        if not settings.DEBUG_ECHO_MODE:
+        if not settings.debug_echo_mode:
             logger.info("Watchdog notification skipped (DEBUG_ECHO_MODE=false)")
             return
             
@@ -28,7 +28,7 @@ async def send_alert(alert_name: str, details: dict):
             return
             
         # Check Allowlist
-        allowed_numbers = [n.strip() for n in settings.DEBUG_ECHO_ALLOWLIST_E164.split(",") if n.strip()]
+        allowed_numbers = settings.debug_echo_allowlist_e164
         if admin_phone not in allowed_numbers:
              logger.warning(f"Watchdog admin phone {admin_phone} not in Allowlist. Skipping.")
              return
@@ -46,12 +46,12 @@ async def send_alert(alert_name: str, details: dict):
                  # Assuming whatsapp_client handles mapping or we added config.
                  # I'll use a placeholder or check if settings has it.
                  # Actually, `send_text_message` requires `phone_number_id`.
-                 # I'll check if I should add `WHATSAPP_BUSINESS_PHONE_NUMBER_ID` to config.
-                 # The user didn't explicitly ask for it, but for notification ensuring we can send is good.
-                 # I'll assume passing a configured ID if available, else skip.
-                 # Or just log error.
-                 pass
-                 # await whatsapp_client.send_text_message(pid, admin_phone, msg)
+                 # Preferred: use configured business phone number id if available.
+                 pid = settings.whatsapp_phone_number_id
+                 if pid:
+                     await whatsapp_client.send_text_message(pid, admin_phone, msg)
+                 else:
+                     logger.warning("Watchdog notification skipped (WHATSAPP_PHONE_NUMBER_ID not configured)")
              except Exception as e:
                  logger.error(f"Failed to send watchdog notification: {e}")
         else:

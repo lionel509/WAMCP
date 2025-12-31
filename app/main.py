@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.db.session import get_db
 from app.services.ingest_service import IngestService
+from app.api.admin import router as admin_router
 import logging
 
 # Configure logging
@@ -13,6 +14,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="WAMCP API")
+app.include_router(admin_router)
 
 @app.get("/health")
 async def health():
@@ -27,11 +29,15 @@ async def verify_webhook(
     """
     Handle Webhook Verification Challenge from Meta.
     """
-    if mode == "subscribe" and token == settings.WHATSAPP_VERIFY_TOKEN:
+    if not settings.whatsapp_verify_token:
+        logger.error("Webhook verification token not configured")
+        raise HTTPException(status_code=500, detail="Verification token not configured")
+
+    if mode == "subscribe" and token == settings.whatsapp_verify_token:
         logger.info("Webhook verification successful")
         return Response(content=challenge, media_type="text/plain")
-    
-    logger.warning(f"Webhook verification failed. Token: {token}")
+
+    logger.warning("Webhook verification failed.")
     raise HTTPException(status_code=403, detail="Verification failed")
 
 @app.get("/admin/watchdog/status")
@@ -39,7 +45,7 @@ async def get_watchdog_status(
     api_key: str = Query(..., alias="api_key"),
     db: AsyncSession = Depends(get_db)
 ):
-    if api_key != settings.ADMIN_API_KEY:
+    if api_key != settings.admin_api_key:
         raise HTTPException(status_code=403, detail="Invalid API Key")
         
     from app.db.models import WatchdogRun

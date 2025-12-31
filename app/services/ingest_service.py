@@ -4,14 +4,26 @@ import logging
 import uuid
 from datetime import datetime
 from typing import Optional, List, Any, Dict
-from sqlalchemy.orm import declarative_base
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException
 
 from app.config import settings
-from app.db.models import RawEvent, Conversation, Participant, ParticipantAlias, Message, ConversationType, MessageDirection, ParticipantSource, ParticipantCustomerMap
+from app.db.models import (
+    RawEvent,
+    Conversation,
+    Participant,
+    ParticipantAlias,
+    Message,
+    ConversationType,
+    MessageDirection,
+    ParticipantSource,
+    ParticipantCustomerMap,
+    Document,
+    DocType,
+    ExtractionStatus,
+)
 from app.services.whatsapp_parser import parse_webhook_payload, NormalizedEvent
 from app.security.webhook_verify import verify_signature
 
@@ -33,14 +45,13 @@ class IngestService:
         
         # 1. Signature Verification (First Defense)
         sig_valid = True
-        if settings.VERIFY_WEBHOOK_SIGNATURE:
-             sig_header = headers.get("x-hub-signature-256", "")
-             sig_valid = verify_signature(raw_body, sig_header, settings.WHATSAPP_APP_SECRET or "")
-             
-             if not sig_valid:
-                 # Strictly reject if verification fails
-                 logger.warning(f"Signature verification failed. Hash: {request_hash}")
-                 raise HTTPException(status_code=401, detail="Invalid Signature")
+        if settings.verify_webhook_signature:
+            sig_header = headers.get("x-hub-signature-256", "")
+            sig_valid = verify_signature(raw_body, sig_header, settings.whatsapp_app_secret or "")
+            if not sig_valid:
+                # Strictly reject if verification fails
+                logger.warning(f"Signature verification failed. Hash: {request_hash}")
+                raise HTTPException(status_code=401, detail="Invalid Signature")
 
         # 2. Idempotency Check
         stmt = select(RawEvent).where(RawEvent.request_hash == request_hash)
@@ -267,22 +278,30 @@ class IngestService:
                 
                 # Check for documents/media
                 if event.message_type in ["image", "document", "audio", "video", "sticker"]:
-                     # Create Document (Pending)
-                     # We use message_id as placeholder storage key initially
+                     mime_type = "application/octet-stream"
+                     if event.raw_message_json:
+                         media_section = event.raw_message_json.get(event.message_type, {})
+                         mime_type = media_section.get("mime_type", mime_type)
+
+                     doc_type = DocType.OTHER
+                     if event.message_type == "image":
+                         doc_type = DocType.IMAGE
+                     elif event.message_type == "document":
+                         doc_type = DocType.PDF if mime_type.startswith("application/pdf") else DocType.OTHER
+
                      new_doc = Document(
                          id=uuid.uuid4(),
                          message_id=new_msg.id,
-                         doc_type=DocType.OTHER, # We need to map type 
-                         mime_type="application/octet-stream", # We don't have mime yet? Msg usually has it.
+                         doc_type=doc_type,
+                         mime_type=mime_type,
                          storage_key_raw=f"pending/{new_msg.id}",
                          extraction_status=ExtractionStatus.PENDING
                      )
                      self.db.add(new_doc)
-                     # For now, we don't dispatch download task because we need to resolve media_id -> URL.
-                     # TODO: Dispatch process_document(new_doc.id, media_id)
+                     # Media download URLs are not present in normalized events; dispatch occurs once raw objects are persisted.
                 
                 # Enqueue Tasks
-                if event.direction == "inbound" and settings.DEBUG_ECHO_MODE:
+                if event.direction == "inbound" and settings.debug_echo_mode:
                      from app.workers.tasks import handle_debug_echo_v2
                      handle_debug_echo_v2.delay(
                          business_phone_id=event.business_phone_number_id,

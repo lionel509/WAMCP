@@ -3,14 +3,18 @@ from app.integrations.whatsapp_client import whatsapp_client
 from app.integrations.minio_client import minio_client
 from app.config import settings
 from app.db.session import AsyncSessionLocal
-from app.db.models import Document, ExtractionStatus
-from sqlalchemy import select, update
+from app.db.models import Document, ExtractionStatus, DocType
+from app.services.document_extraction import (
+    DocumentExtractionService,
+    DocumentExtractionError,
+    DocumentNotFoundError,
+    DocumentTooLargeError,
+)
+from sqlalchemy import select
 import asyncio
 import logging
 import redis
-import httpx
-import hashlib
-import os
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -91,18 +95,10 @@ def handle_debug_echo_v2(business_phone_id: str, message_id: str, to: str, origi
         if to in allowed_numbers:
             is_allowed = True
 
-    if not is_allowed:  # If allowlists are set, must match. If empty, maybe deny all?
-        # Safe default: if mode is true but allowlist empty, allow NONE?
-        # User said "If allowlist is set, echo only to those...".
-        # If allowlist NOT set, maybe allow all?
-        # "DEBUG echo can accidental spam".
-        # We assume if allowlist provided -> restrict.
-        # If allowlist empty -> UNSAFE? 
-        # I'll assume allowlist is mandatory for safety.
+    if not is_allowed:
         if allowed_numbers or allowed_groups:
              logger.info("Not allowed")
              return
-        # If allowlists empty, we proceed (assuming user knows what they are doing with DEBUG_ECHO_MODE=true)
     
     # Rate Limit
     if redis_client.set(f"rate_limit:echo:{to}", "1", ex=settings.DEBUG_ECHO_RATE_LIMIT_SECONDS, nx=True) is None:
@@ -118,59 +114,54 @@ def handle_debug_echo_v2(business_phone_id: str, message_id: str, to: str, origi
 
 
 @celery.task(name="app.workers.tasks.process_document")
-def process_document(document_id: str, media_url: str, headers: dict = None):
+def process_document(document_id: str, media_url: str | None = None, headers: dict | None = None):
     # Async wrapper
     asyncio.run(_process_document_async(document_id, media_url, headers))
 
-async def _process_document_async(document_id: str, media_url: str, headers: dict = None):
+async def _process_document_async(
+    document_id: str, media_url: str | None = None, headers: dict | None = None, storage_client=None
+):
+    try:
+        doc_uuid = uuid.UUID(str(document_id))
+    except ValueError:
+        logger.error(f"Invalid document id {document_id}")
+        return
+
     async with AsyncSessionLocal() as db:
-        stmt = select(Document).where(Document.id == document_id)
+        stmt = select(Document).where(Document.id == doc_uuid)
         res = await db.execute(stmt)
         doc = res.scalar_one_or_none()
         
         if not doc:
             logger.error(f"Document {document_id} not found")
             return
-            
+
+        extractor = DocumentExtractionService(storage_client or minio_client)
+        doc.extraction_status = ExtractionStatus.PENDING
+        doc.extraction_error = None
+
         try:
-            # 1. Download
-            # Need Auth token for WA media? Yes.
-            # Using settings.WHATSAPP_API_TOKEN
-            dl_headers = headers or {}
-            if settings.WHATSAPP_API_TOKEN:
-                dl_headers["Authorization"] = f"Bearer {settings.WHATSAPP_API_TOKEN}"
-                
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(media_url, headers=dl_headers, timeout=30.0)
-                resp.raise_for_status()
-                data = resp.content
-                
-            # 2. Upload to MinIO
-            # Generate key: {doc_id}/{filename}
-            # We don't have filename easily from URL? 
-            # Use doc_uuid
-            filename = f"{document_id}.bin" 
-            # Or use extension from mime_type if available in doc?
-            # doc.mime_type
-            
-            key = f"{document_id}/{filename}"
-            
-            if minio_client.upload_data(key, data):
-                 doc.storage_key_raw = key
-                 doc.storage_key_sanitized = key # Pending sanitization
-                 doc.sha256 = hashlib.sha256(data).hexdigest()
-                 doc.extraction_status = ExtractionStatus.OK  # Mark as downloaded/stored OK. extraction next.
-                 
-                 # 3. Extraction (Stub)
-                 # In future: call OCR service
-                 doc.extracted_text = "(Extraction stub: Text extracted from document)"
-            else:
-                 doc.extraction_status = ExtractionStatus.FAILED
-                 doc.extraction_error = "MinIO upload failed"
-                 
-        except Exception as e:
-            logger.exception("Document processing failed")
+            sanitized_text, fields = await extractor.process(doc, media_url, headers)
+            doc.extracted_text = sanitized_text
+            if doc.doc_type == DocType.INVOICE:
+                doc.extracted_fields_json = fields or {}
+            doc.extraction_status = ExtractionStatus.OK
+            doc.extraction_error = None
+        except DocumentTooLargeError as e:
+            logger.warning(f"Document {doc.id} exceeded size limit: {e}")
+            doc.extraction_status = ExtractionStatus.FAILED
+            doc.extraction_error = "Document exceeds maximum allowed size"
+        except DocumentNotFoundError as e:
+            logger.error(f"Document {doc.id} missing from storage: {e}")
+            doc.extraction_status = ExtractionStatus.FAILED
+            doc.extraction_error = "Document not available in storage"
+        except DocumentExtractionError as e:
+            logger.warning(f"Extraction failed for document {doc.id}: {e}")
             doc.extraction_status = ExtractionStatus.FAILED
             doc.extraction_error = str(e)
+        except Exception:
+            logger.exception("Document processing failed")
+            doc.extraction_status = ExtractionStatus.FAILED
+            doc.extraction_error = "Unexpected extraction failure"
         
         await db.commit()

@@ -17,7 +17,7 @@ def generate_signature(body: bytes, secret: str) -> str:
 @pytest.mark.asyncio
 async def test_ingest_webhook_valid(db_session):
     # Setup
-    settings.WHATSAPP_APP_SECRET = "test_secret" # Set secret for test
+    settings.WHATSAPP_APP_SECRET_PRIMARY = "test_secret"  # Set secret for test
     svc = IngestService(db_session)
     body_dict = {
       "object": "whatsapp_business_account",
@@ -38,7 +38,7 @@ async def test_ingest_webhook_valid(db_session):
       }]
     }
     raw_body = json.dumps(body_dict).encode()
-    sig = generate_signature(raw_body, settings.WHATSAPP_APP_SECRET or "")
+    sig = generate_signature(raw_body, settings.whatsapp_app_secret or "")
     headers = {"x-hub-signature-256": sig}
     
     # Act
@@ -55,11 +55,11 @@ async def test_ingest_webhook_valid(db_session):
 
 @pytest.mark.asyncio
 async def test_ingest_webhook_duplicate(db_session):
-    settings.WHATSAPP_APP_SECRET = "test_secret"
+    settings.WHATSAPP_APP_SECRET_PRIMARY = "test_secret"
     svc = IngestService(db_session)
     body_dict = {"test": f"duplicate_{uuid.uuid4()}"}
     raw_body = json.dumps(body_dict).encode()
-    sig = generate_signature(raw_body, settings.WHATSAPP_APP_SECRET or "")
+    sig = generate_signature(raw_body, settings.whatsapp_app_secret or "")
     headers = {"x-hub-signature-256": sig}
     
     # First Call
@@ -73,7 +73,7 @@ async def test_ingest_webhook_duplicate(db_session):
 
 @pytest.mark.asyncio
 async def test_ingest_signature_fail(db_session):
-    if not settings.VERIFY_WEBHOOK_SIGNATURE:
+    if not settings.verify_webhook_signature:
         pytest.skip("Signature verification disabled")
         
     svc = IngestService(db_session)
