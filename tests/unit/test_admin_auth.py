@@ -21,4 +21,4 @@ async def test_require_admin_api_key_invalid():
 
 @pytest.mark.asyncio
 async def test_require_admin_api_key_valid():
-    assert await require_admin_api_key(settings.admin_api_key) is True
+    assert await require_admin_api_key(settings.admin_api_key)

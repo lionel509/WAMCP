@@ -70,12 +70,12 @@ async def test_admin_endpoints_return_seeded_rows(db_session):
         resp = await client.get(
             "/admin/search/messages",
             headers=headers,
-            params={"q": "searchable", "conversation_id": convo.id},
+            params={"q": "searchable", "conversation_id": str(convo.id)},
         )
         assert resp.status_code == 200
         assert any(m["id"] == message.id for m in resp.json()["messages"])
 
-        resp = await client.get("/admin/documents", headers=headers, params={"conversation_id": convo.id})
+        resp = await client.get("/admin/documents", headers=headers, params={"conversation_id": str(convo.id)})
         assert resp.status_code == 200
         assert any(d["id"] == str(document.id) for d in resp.json()["documents"])
 

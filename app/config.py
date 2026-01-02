@@ -198,7 +198,8 @@ class Settings(BaseSettings):
 
     @property
     def minio_bucket(self) -> str:
-        return _first_non_empty(self.MINIO_BUCKET, self.MINIO_BUCKET_DOCUMENTS, default="documents")
+        bucket = _first_non_empty(self.MINIO_BUCKET, self.MINIO_BUCKET_DOCUMENTS, default="documents")
+        return str(bucket or "documents")
 
     @property
     def debug_echo_mode(self) -> bool:

@@ -34,7 +34,7 @@ class IngestService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def ingest_webhook(self, raw_body: bytes, headers: dict, request_id: str = None) -> Dict[str, Any]:
+    async def ingest_webhook(self, raw_body: bytes, headers: dict, request_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Process inbound webhook.
         1. Calculate Hash & Check Idempotency
@@ -109,8 +109,9 @@ class IngestService:
         )
 
         # 3. Store Raw Event
+        raw_event_id = uuid.uuid4()
         raw_event = RawEvent(
-            id=uuid.uuid4(),
+            id=raw_event_id,
             source="whatsapp",
             signature_valid=sig_valid,
             request_hash=request_hash,
@@ -144,13 +145,15 @@ class IngestService:
         
         for event in normalized_events:
             if event.message_id:
-                await self._process_normalized_event(event, raw_event.id, request_id)
+                await self._process_normalized_event(event, raw_event_id, request_id)
                 processed_messages.append(event.message_id)
 
         await self.db.commit()
         return {"status": "processed", "count": len(processed_messages), "raw_event_id": str(raw_event.id)}
 
-    async def _process_normalized_event(self, event: NormalizedEvent, raw_event_id: uuid.UUID, request_id: str = None):
+    async def _process_normalized_event(
+        self, event: NormalizedEvent, raw_event_id: uuid.UUID, request_id: Optional[str] = None
+    ):
         if not request_id:
             request_id = "unknown"
         
@@ -161,7 +164,7 @@ class IngestService:
             conversation_type=event.conversation_type,
             conversation_id=event.conversation_id,
             sender_participant_id=event.sender_participant_id or "unknown",
-            message_type=event.message_type,
+            message_type=event.message_type or "unknown",
             sent_at=event.timestamp.isoformat() if event.timestamp else None
         )
         
@@ -212,7 +215,7 @@ class IngestService:
                     participant = p_result.scalar_one_or_none()
             
             # C. Upsert Alias (if display name present)
-            if event.sender_display_name:
+            if participant and event.sender_display_name:
                 # Check if alias recorded recently? Or just simplistic upsert?
                 # Requirement: "Never assume display name is stable; store alias history."
                 # We check if (participant_id, name) exists.

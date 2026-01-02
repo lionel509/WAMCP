@@ -133,7 +133,7 @@ async def search_messages(query: str, limit: int = 50, conversation_id: Optional
         if settings.plugin_mode:
             await db.execute(text("SET default_transaction_read_only = on"))
 
-        filters = [Message.text_body.ilike(f"%{query}%")]
+        filters: List[Any] = [Message.text_body.ilike(f"%{query}%")]
         if conversation_id:
             filters.append(Message.conversation_id == conversation_id)
 

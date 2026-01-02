@@ -7,6 +7,8 @@ def run_command(command):
     """Runs a command and prints its output."""
     try:
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, shell=True)
+        if process.stdout is None:
+            raise RuntimeError("Failed to capture process stdout")
         for line in iter(process.stdout.readline, ''):
             sys.stdout.write(line)
         process.stdout.close()

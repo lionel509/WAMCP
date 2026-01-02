@@ -3,22 +3,21 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator, Optional
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 engine = create_async_engine(settings.DATABASE_URL, echo=False, future=True, pool_pre_ping=True)
-AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 audit_engine = None
-AuditSessionLocal: Optional[sessionmaker] = None
+AuditSessionLocal: Optional[async_sessionmaker[AsyncSession]] = None
 
 if settings.audit_database_url:
     audit_engine = create_async_engine(settings.audit_database_url, echo=False, future=True, pool_pre_ping=True)
-    AuditSessionLocal = sessionmaker(audit_engine, class_=AsyncSession, expire_on_commit=False)
+    AuditSessionLocal = async_sessionmaker(audit_engine, expire_on_commit=False)
 
 
 async def get_db(read_only: Optional[bool] = None) -> AsyncIterator[AsyncSession]:

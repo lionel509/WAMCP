@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any, Union
 from pydantic import BaseModel, Field
 
@@ -96,7 +96,7 @@ def _normalize_message(
     msg_id = msg.get("id", "") # Mandatory
     participant_id = msg.get("from", "") # Sender phone
     timestamp_str = msg.get("timestamp")
-    timestamp = datetime.fromtimestamp(int(timestamp_str)) if timestamp_str else datetime.utcnow()
+    timestamp = datetime.fromtimestamp(int(timestamp_str)) if timestamp_str else datetime.now(timezone.utc)
     
     msg_type = msg.get("type", "unknown")
     text_body = None
@@ -152,7 +152,7 @@ def _normalize_status(
     msg_id = status.get("id", "")
     status_val = status.get("status")
     timestamp_str = status.get("timestamp")
-    timestamp = datetime.fromtimestamp(int(timestamp_str)) if timestamp_str else datetime.utcnow()
+    timestamp = datetime.fromtimestamp(int(timestamp_str)) if timestamp_str else datetime.now(timezone.utc)
     recipient_id = status.get("recipient_id", "")
     
     # Statuses usually indicate OUTBOUND message state

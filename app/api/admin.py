@@ -66,6 +66,7 @@ async def admin_health(
     except Exception:
         status["postgres"] = False
 
+    redis_client = None
     try:
         redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
         status["redis"] = bool(redis_client.ping())

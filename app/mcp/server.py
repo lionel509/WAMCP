@@ -33,7 +33,7 @@ async def get_recent_messages(conversation_id: str, limit: int = 20) -> dict:
     return await tools.get_recent_messages(conversation_id, limit)
 
 @mcp.tool()
-async def search_messages(query: str, limit: int = 50, conversation_id: str = None) -> dict:
+async def search_messages(query: str, limit: int = 50, conversation_id: str | None = None) -> dict:
     """Search messages by text content."""
     return await tools.search_messages(query, limit, conversation_id)
 

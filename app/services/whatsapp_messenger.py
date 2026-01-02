@@ -170,7 +170,7 @@ class WhatsAppMessenger:
         
         url = f"{self.base_url}/{self.api_version}/{phone_id}/messages"
         
-        template_obj = {
+        template_obj: Dict[str, Any] = {
             "name": template_name,
             "language": {"code": language_code}
         }

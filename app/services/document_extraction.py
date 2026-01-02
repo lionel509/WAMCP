@@ -123,7 +123,8 @@ class DocumentExtractionService:
         self, document: Document, media_url: Optional[str], headers: Optional[dict]
     ) -> bytes:
         if document.storage_key_raw:
-            data = await asyncio.to_thread(self.storage_client.download_data, document.storage_key_raw)
+            storage_key = str(document.storage_key_raw)
+            data = await asyncio.to_thread(self.storage_client.download_data, storage_key)
             if data is None:
                 raise DocumentNotFoundError("Document not found in object storage")
             return data
@@ -131,9 +132,8 @@ class DocumentExtractionService:
         if media_url:
             data = await self._download_media(media_url, headers)
             key = f"{document.id}/raw"
-            stored = await asyncio.to_thread(
-                self.storage_client.upload_data, key, data, document.mime_type or "application/octet-stream"
-            )
+            content_type = document.mime_type or "application/octet-stream"
+            stored = await asyncio.to_thread(self.storage_client.upload_data, key, data, content_type)
             if not stored:
                 raise DocumentExtractionError("Failed to persist document to storage")
             document.storage_key_raw = key

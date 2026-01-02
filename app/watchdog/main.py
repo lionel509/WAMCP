@@ -76,7 +76,7 @@ async def main():
             logger.exception("Watchdog Cycle Crash")
         
         elapsed = time.time() - start_time
-        sleep_time = max(1, settings.WATCHDOG_INTERVAL_SECONDS - elapsed)
+        sleep_time = max(1.0, float(settings.WATCHDOG_INTERVAL_SECONDS) - elapsed)
         await asyncio.sleep(sleep_time)
 
 if __name__ == "__main__":

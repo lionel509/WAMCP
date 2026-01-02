@@ -1,11 +1,13 @@
 import logging
-from sqlalchemy import text, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime, timedelta
-from app.config import settings
-from app.db.models import RawEvent, Document, ExtractionStatus
-from app.integrations.minio_client import minio_client
+from datetime import datetime, timedelta, timezone
+
 import redis
+from sqlalchemy import func, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import settings
+from app.db.models import Document, ExtractionStatus, RawEvent
+from app.integrations.minio_client import minio_client
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +44,7 @@ async def check_ingestion_health(db: AsyncSession) -> list:
     
     # 1. Recent Ingestion (Informational check mostly, unless critical)
     # Check if ANY raw event in last 15 min
-    since = datetime.utcnow() - timedelta(minutes=15)
+    since = datetime.now(timezone.utc) - timedelta(minutes=15)
     stmt = select(func.count(RawEvent.id)).where(RawEvent.received_at > since)
     res = await db.execute(stmt)
     count = res.scalar() or 0
@@ -67,7 +69,7 @@ async def check_document_health(db: AsyncSession) -> tuple[list, list]:
     
     # 1. Pending too long
     threshold_mins = settings.WATCHDOG_STUCK_MESSAGE_MINUTES
-    cutoff = datetime.utcnow() - timedelta(minutes=threshold_mins)
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=threshold_mins)
     
     stmt_pending = select(Document.id).where(
         Document.extraction_status == ExtractionStatus.PENDING,
@@ -82,7 +84,7 @@ async def check_document_health(db: AsyncSession) -> tuple[list, list]:
         stalled_ids = [str(pid) for pid in pending_ids]
         
     # 2. Failed too many
-    since_hour = datetime.utcnow() - timedelta(hours=1)
+    since_hour = datetime.now(timezone.utc) - timedelta(hours=1)
     stmt_failed = select(func.count(Document.id)).where(
         Document.extraction_status == ExtractionStatus.FAILED,
         Document.created_at > since_hour
@@ -100,9 +102,10 @@ async def check_queue_health(redis_client: redis.Redis) -> list:
     # Celery queue length
     # Default queue key: 'celery'
     try:
-        q_len = redis_client.llen("celery")
+        q_len_raw = redis_client.llen("celery")
+        q_len = int(q_len_raw)
         if q_len > settings.WATCHDOG_MAX_QUEUE_BACKLOG:
-             alerts.append({"type": "queue_backlog", "count": q_len, "limit": settings.WATCHDOG_MAX_QUEUE_BACKLOG})
+            alerts.append({"type": "queue_backlog", "count": q_len, "limit": settings.WATCHDOG_MAX_QUEUE_BACKLOG})
     except Exception as e:
         logger.error(f"Queue Check Failed: {e}")
         
