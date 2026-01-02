@@ -19,9 +19,10 @@ logger = logging.getLogger(__name__)
 
 
 async def require_admin_api_key(x_admin_api_key: Optional[str] = Header(None, alias="X-Admin-Api-Key")):
+    import hmac
     if not x_admin_api_key:
         raise HTTPException(status_code=401, detail="Missing admin API key")
-    if x_admin_api_key != settings.admin_api_key:
+    if not hmac.compare_digest(x_admin_api_key, settings.admin_api_key or ""):
         raise HTTPException(status_code=403, detail="Invalid admin API key")
     return True
 
@@ -74,7 +75,8 @@ async def admin_health(
         status["redis"] = False
     finally:
         try:
-            redis_client.close()
+            if redis_client:
+                redis_client.close()
         except Exception:
             pass
 

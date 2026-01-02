@@ -75,7 +75,7 @@ class WhatsAppMessenger:
     
     async def send_text(
         self,
-        to: str,
+        to: Optional[str],
         body: str,
         preview_url: bool = False,
         phone_number_id: Optional[str] = None,
@@ -84,13 +84,17 @@ class WhatsAppMessenger:
         Send a text message.
         
         Args:
-            to: Recipient phone number (e.g., "15169007810")
+            to: Recipient phone number (e.g., "15555555555")
             body: Message text
             preview_url: Enable URL preview
             phone_number_id: Override default phone number ID
         """
         if not self.api_token:
             return {"error": "WhatsApp access token not configured", "error_type": "missing_token"}
+        
+        recipient = to or settings.default_recipient_phone
+        if not recipient:
+            return {"error": "Recipient 'to' not provided and no default configured", "error_type": "missing_recipient"}
         
         phone_id = phone_number_id or self.phone_number_id
         if not phone_id:
@@ -102,17 +106,17 @@ class WhatsAppMessenger:
                 "error_type": "placeholder_config"
             }
         
-        # Validate 'to' parameter is not a placeholder
-        if self._is_placeholder_phone_id(to):
+        # Validate 'recipient' parameter is not a placeholder
+        if self._is_placeholder_phone_id(recipient):
             return {
-                "error": f"Recipient 'to' parameter is set to placeholder '{to}'. Must be a valid E.164 phone number like '15169007810'.",
+                "error": f"Recipient 'to' parameter is set to placeholder '{recipient}'. Must be a valid E.164 phone number like '15555555555'.",
                 "error_type": "invalid_recipient"
             }
         
         url = f"{self.base_url}/{self.api_version}/{phone_id}/messages"
         payload = {
             "messaging_product": "whatsapp",
-            "to": to,
+            "to": recipient,
             "type": "text",
             "text": {"body": body, "preview_url": preview_url}
         }
@@ -132,7 +136,7 @@ class WhatsAppMessenger:
     
     async def send_template(
         self,
-        to: str,
+        to: Optional[str],
         template_name: str,
         language_code: str = "en_US",
         parameters: Optional[list] = None,
@@ -140,17 +144,14 @@ class WhatsAppMessenger:
     ) -> Dict[str, Any]:
         """
         Send a template message.
-        
-        Args:
-            to: Recipient phone number
-            template_name: Template name (e.g., "hello_world")
-            language_code: Language code (default: "en_US")
-            parameters: Template parameter values
-            phone_number_id: Override default phone number ID
         """
         if not self.api_token:
             return {"error": "WhatsApp access token not configured", "error_type": "missing_token"}
         
+        recipient = to or settings.default_recipient_phone
+        if not recipient:
+            return {"error": "Recipient 'to' not provided and no default configured", "error_type": "missing_recipient"}
+
         phone_id = phone_number_id or self.phone_number_id
         if not phone_id:
             return {"error": "WhatsApp phone number ID not configured", "error_type": "missing_phone_id"}
@@ -161,10 +162,10 @@ class WhatsAppMessenger:
                 "error_type": "placeholder_config"
             }
         
-        # Validate 'to' parameter is not a placeholder
-        if self._is_placeholder_phone_id(to):
+        # Validate 'recipient' parameter is not a placeholder
+        if self._is_placeholder_phone_id(recipient):
             return {
-                "error": f"Recipient 'to' parameter is set to placeholder '{to}'. Must be a valid E.164 phone number like '15169007810'.",
+                "error": f"Recipient 'to' parameter is set to placeholder '{recipient}'. Must be a valid E.164 phone number like '15555555555'.",
                 "error_type": "invalid_recipient"
             }
         
@@ -180,7 +181,7 @@ class WhatsAppMessenger:
         
         payload = {
             "messaging_product": "whatsapp",
-            "to": to,
+            "to": recipient,
             "type": "template",
             "template": template_obj
         }
@@ -200,7 +201,7 @@ class WhatsAppMessenger:
     
     async def send_media(
         self,
-        to: str,
+        to: Optional[str],
         media_type: Literal["image", "document", "audio", "video"],
         media_url: str,
         caption: Optional[str] = None,
@@ -208,17 +209,14 @@ class WhatsAppMessenger:
     ) -> Dict[str, Any]:
         """
         Send a media message.
-        
-        Args:
-            to: Recipient phone number
-            media_type: Type of media (image, document, audio, video)
-            media_url: URL to the media file
-            caption: Optional caption
-            phone_number_id: Override default phone number ID
         """
         if not self.api_token:
             return {"error": "WhatsApp access token not configured", "error_type": "missing_token"}
         
+        recipient = to or settings.default_recipient_phone
+        if not recipient:
+            return {"error": "Recipient 'to' not provided and no default configured", "error_type": "missing_recipient"}
+
         phone_id = phone_number_id or self.phone_number_id
         if not phone_id:
             return {"error": "WhatsApp phone number ID not configured", "error_type": "missing_phone_id"}
@@ -229,10 +227,10 @@ class WhatsAppMessenger:
                 "error_type": "placeholder_config"
             }
         
-        # Validate 'to' parameter is not a placeholder
-        if self._is_placeholder_phone_id(to):
+        # Validate 'recipient' parameter is not a placeholder
+        if self._is_placeholder_phone_id(recipient):
             return {
-                "error": f"Recipient 'to' parameter is set to placeholder '{to}'. Must be a valid E.164 phone number like '15169007810'.",
+                "error": f"Recipient 'to' parameter is set to placeholder '{recipient}'. Must be a valid E.164 phone number like '15555555555'.",
                 "error_type": "invalid_recipient"
             }
         
@@ -244,7 +242,7 @@ class WhatsAppMessenger:
         
         payload = {
             "messaging_product": "whatsapp",
-            "to": to,
+            "to": recipient,
             "type": media_type,
             media_type: media_obj
         }

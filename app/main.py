@@ -43,7 +43,8 @@ async def verify_webhook(
         StructuredLogger.log_webhook_verification(success=False, mode=mode)
         raise HTTPException(status_code=500, detail="Verification token not configured")
 
-    success = mode == "subscribe" and token == settings.whatsapp_verify_token
+    import hmac
+    success = mode == "subscribe" and hmac.compare_digest(token, settings.whatsapp_verify_token or "")
 
     if success:
         logger.info(f"Webhook verification successful for mode={mode}")
@@ -57,7 +58,8 @@ async def verify_webhook(
 
 @ops_router.get("/watchdog/status")
 async def get_watchdog_status(api_key: str = Query(..., alias="api_key"), db: AsyncSession = Depends(get_db)):
-    if api_key != settings.admin_api_key:
+    import hmac
+    if not hmac.compare_digest(api_key, settings.admin_api_key or ""):
         raise HTTPException(status_code=403, detail="Invalid API Key")
 
     from app.db.models import WatchdogRun
@@ -94,12 +96,14 @@ async def receive_webhook(request: Request, db: AsyncSession = Depends(get_db)):
 
     except Exception as e:
         logger.error(f"Webhook processing failed: {str(e)}", exc_info=True)
+        # Avoid leaking internal error details in production
+        error_detail = "Internal error" if settings.APP_ENV == "prod" else str(e)[:100]
         StructuredLogger.log_webhook_error(
             request_id=request_id,
             error_message=str(e)[:100],  # Safe truncation
             exception_class=type(e).__name__,
         )
-        return {"ok": False, "request_id": request_id, "error": str(e)[:100]}
+        return {"ok": False, "request_id": request_id, "error": error_detail}
 
 
 async def _check_db_connectivity(url: str) -> bool:
@@ -116,20 +120,10 @@ async def _check_db_connectivity(url: str) -> bool:
 
 def create_app(plugin_mode: Optional[bool] = None) -> FastAPI:
     mode = settings.plugin_mode if plugin_mode is None else plugin_mode
-    app = FastAPI(title="WAMCP API")
-    app.include_router(health_router)
-    app.include_router(core_router)
-
-    if not mode:
-        app.include_router(admin_router)
-        app.include_router(messages_router)
-        app.include_router(webhook_router)
-        app.include_router(ops_router)
-    else:
-        logger.info("Plugin mode enabled: webhook and admin/message routes are disabled")
-
-    @app.on_event("startup")
-    async def startup_event():
+    
+    from contextlib import asynccontextmanager
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
         public_url_state = "set" if settings.public_base_url else "unset"
         audit_db_enabled = bool(settings.audit_database_url)
 
@@ -152,6 +146,20 @@ def create_app(plugin_mode: Optional[bool] = None) -> FastAPI:
 
         if not mode and settings.debug_echo_mode:
             logger.warning("⚠️  DEBUG_ECHO_MODE=true - Messages will be echoed back (dev only)")
+        
+        yield
+
+    app = FastAPI(title="WAMCP API", lifespan=lifespan)
+    app.include_router(health_router)
+    app.include_router(core_router)
+
+    if not mode:
+        app.include_router(admin_router)
+        app.include_router(messages_router)
+        app.include_router(webhook_router)
+        app.include_router(ops_router)
+    else:
+        logger.info("Plugin mode enabled: webhook and admin/message routes are disabled")
 
     return app
 

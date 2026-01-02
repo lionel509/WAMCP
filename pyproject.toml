@@ -59,3 +59,7 @@ target-version = "py312"
 python_version = "3.12"
 strict = true
 ignore_missing_imports = true
+
+[tool.pyrefly]
+python-version = "3.12.0"
+ignore-missing-imports = ["*"]

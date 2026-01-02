@@ -120,6 +120,7 @@ class Settings(BaseSettings):
     DEBUG_ECHO_ALLOW_GROUP_IDS: str = Field(default="", alias="DEBUG_ECHO_ALLOW_GROUP_IDS")
     DEBUG_ECHO_RATE_LIMIT_SECONDS: int = 60
     DEBUG_ECHO_GROUP_FALLBACK: bool = False
+    DEFAULT_RECIPIENT_PHONE: Optional[str] = Field(default=None, alias="DEFAULT_RECIPIENT_PHONE")
     MAX_DOCUMENT_BYTES: int = 10 * 1024 * 1024  # 10MB default limit for document processing
 
     # Admin
@@ -216,6 +217,10 @@ class Settings(BaseSettings):
     @property
     def admin_api_key(self) -> str:
         return self.ADMIN_API_KEY
+
+    @property
+    def default_recipient_phone(self) -> Optional[str]:
+        return self.DEFAULT_RECIPIENT_PHONE
 
     @property
     def public_base_url(self) -> Optional[str]:

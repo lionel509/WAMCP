@@ -9,20 +9,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 class SendTextRequest(BaseModel):
-    to: str
+    to: Optional[str] = None
     body: str
     preview_url: bool = False
     phone_number_id: Optional[str] = None
 
 class SendTemplateRequest(BaseModel):
-    to: str
+    to: Optional[str] = None
     template_name: str
     language_code: str = "en_US"
     parameters: Optional[List[str]] = None
     phone_number_id: Optional[str] = None
 
 class SendMediaRequest(BaseModel):
-    to: str
+    to: Optional[str] = None
     media_type: str  # "image", "document", "audio", "video"
     media_url: str
     caption: Optional[str] = None
@@ -30,7 +30,8 @@ class SendMediaRequest(BaseModel):
 
 def verify_admin_key(x_admin_api_key: str = Header(None)) -> str:
     """Verify admin API key from header."""
-    if x_admin_api_key != settings.admin_api_key:
+    import hmac
+    if not x_admin_api_key or not hmac.compare_digest(x_admin_api_key, settings.admin_api_key or ""):
         raise HTTPException(status_code=403, detail="Invalid admin API key")
     return x_admin_api_key
 
@@ -63,7 +64,7 @@ async def send_text_message(
       -H "X-Admin-Api-Key: admin123" \\
       -H "Content-Type: application/json" \\
       -d '{
-        "to": "15169007810",
+        "to": "15555555555",
         "body": "Hello from WAMCP!"
       }'
     ```
@@ -100,7 +101,7 @@ async def send_template_message(
       -H "X-Admin-Api-Key: admin123" \\
       -H "Content-Type: application/json" \\
       -d '{
-        "to": "15169007810",
+        "to": "15555555555",
         "template_name": "hello_world",
         "language_code": "en_US"
       }'
@@ -139,7 +140,7 @@ async def send_media_message(
       -H "X-Admin-Api-Key: admin123" \\
       -H "Content-Type: application/json" \\
       -d '{
-        "to": "15169007810",
+        "to": "15555555555",
         "media_type": "image",
         "media_url": "https://example.com/image.jpg",
         "caption": "Check this out!"

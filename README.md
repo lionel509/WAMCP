@@ -69,6 +69,7 @@ A production-grade system for ingesting WhatsApp webhooks, processing them, and 
 Your app automatically receives and stores all incoming WhatsApp messages via the webhook endpoint.
 
 **Setup:**
+
 1. Start the tunnel: `make tunnel`
 2. Get your public URL: `make tunnel-url`
 3. Set `PUBLIC_BASE_URL` in `.env` to your tunnel URL (optional, API logs this on startup)
@@ -77,11 +78,13 @@ Your app automatically receives and stores all incoming WhatsApp messages via th
    - **Verify Token**: Must match `WHATSAPP_VERIFY_TOKEN` from `.env` (default: `dev-verify-token`)
 
 **Test the webhook:**
+
 ```bash
 curl -X GET "https://<your-tunnel-url>/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=dev-verify-token&hub.challenge=test_challenge"
 ```
 
 When Meta sends a webhook, your API:
+
 - Verifies the signature using `WHATSAPP_APP_SECRET`
 - Stores the raw event in the database
 - Parses and normalizes the message
@@ -89,12 +92,14 @@ When Meta sends a webhook, your API:
 - Optional: Triggers debug echo (auto-reply) if enabled
 
 **View received messages:**
+
 ```bash
 curl -H "X-Admin-Api-Key: admin123" http://localhost:8000/admin/conversations
 curl -H "X-Admin-Api-Key: admin123" http://localhost:8000/admin/conversations/{id}/messages
 ```
 
 **Troubleshooting:**
+
 - **Not receiving messages?** Check that:
   1. Meta webhook callback URL is set correctly in [App Dashboard > WhatsApp > Configuration](https://developers.facebook.com/apps)
   2. Verify Token matches `WHATSAPP_VERIFY_TOKEN` in your `.env`
@@ -109,20 +114,22 @@ Your app can send three types of WhatsApp messages:
 #### 1. **Text Messages**
 
 **Via API:**
+
 ```bash
 curl -X POST http://localhost:8000/send/text \
   -H "X-Admin-Api-Key: admin123" \
   -H "Content-Type: application/json" \
   -d '{
-    "to": "15169007810",
+    "to": "15555555555",
     "body": "Hello from WAMCP!",
     "preview_url": false
   }'
 ```
 
 **Via Script:**
+
 ```bash
-./scripts/send_whatsapp_message.sh 15169007810 (will eventually call the API)
+./scripts/send_whatsapp_message.sh 15555555555 (will eventually call the API)
 ```
 
 #### 2. **Template Messages**
@@ -130,12 +137,13 @@ curl -X POST http://localhost:8000/send/text \
 Pre-approved message templates from Meta (e.g., `hello_world`).
 
 **Via API:**
+
 ```bash
 curl -X POST http://localhost:8000/send/template \
   -H "X-Admin-Api-Key: admin123" \
   -H "Content-Type: application/json" \
   -d '{
-    "to": "15169007810",
+    "to": "15555555555",
     "template_name": "hello_world",
     "language_code": "en_US",
     "parameters": ["John"]
@@ -147,12 +155,13 @@ curl -X POST http://localhost:8000/send/template \
 Send images, documents, audio, or video.
 
 **Via API:**
+
 ```bash
 curl -X POST http://localhost:8000/send/media \
   -H "X-Admin-Api-Key: admin123" \
   -H "Content-Type: application/json" \
   -d '{
-    "to": "15169007810",
+    "to": "15555555555",
     "media_type": "image",
     "media_url": "https://example.com/image.jpg",
     "caption": "Check this out!"
@@ -164,14 +173,16 @@ curl -X POST http://localhost:8000/send/media \
 Auto-reply to incoming messages when `DEBUG_ECHO_MODE=true`.
 
 **Configuration:**
+
 ```env
 DEBUG_ECHO_MODE=true
-DEBUG_ECHO_ALLOWLIST_E164=5169007810  # Only echo replies from this number
+DEBUG_ECHO_ALLOWLIST_E164=15555555555  # Only echo replies from this number
 DEBUG_ECHO_RATE_LIMIT_SECONDS=60      # Don't echo same person more than once per 60s
 DEBUG_ECHO_GROUP_FALLBACK=false       # Don't auto-reply in groups
 ```
 
 When enabled:
+
 - User sends: "Hello"
 - Bot replies: "Received: Hello"
 
@@ -193,8 +204,9 @@ When enabled:
   - `MINIO_BUCKET` ← `MINIO_BUCKET_DOCUMENTS`
   
 **Important:**
-  - Always provide `WHATSAPP_APP_SECRET` when `VERIFY_WEBHOOK_SIGNATURE=true`.
-  - For tunnels/proxies: Set `PUBLIC_BASE_URL` to match your tunnel URL (e.g., `https://my-tunnel.cloudflare.com`) and use it in Meta's webhook callback URL.
+
+- Always provide `WHATSAPP_APP_SECRET` when `VERIFY_WEBHOOK_SIGNATURE=true`.
+- For tunnels/proxies: Set `PUBLIC_BASE_URL` to match your tunnel URL (e.g., `https://my-tunnel.cloudflare.com`) and use it in Meta's webhook callback URL.
 
 ## Plugin Mode (read-only MCP)
 
@@ -257,6 +269,7 @@ To expose your local stack to Meta WhatsApp webhooks during development, use **Q
 Perfect for testing Meta webhooks on your local machine.
 
 **Step 1: Start the tunnel**
+
 ```bash
 make tunnel
 ```
@@ -264,6 +277,7 @@ make tunnel
 This starts your entire stack including a Cloudflare tunnel that exposes your API to the internet.
 
 **Step 2: Find your public URL**
+
 ```bash
 make tunnel-url
 ```
@@ -271,12 +285,14 @@ make tunnel-url
 This prints your temporary public URL (e.g., `https://abc123-def456.trycloudflare.com`). It changes every time you restart.
 
 **Step 3: Configure Meta Webhook**
+
 1. Go to **Meta App Dashboard** → **WhatsApp** → **Configuration**
 2. Set **Callback URL**: `https://<your-public-url>/webhooks/whatsapp`
 3. Set **Verify Token**: Must match `WHATSAPP_VERIFY_TOKEN` from `.env`
 4. Click **Verify and Save**
 
 **Step 4: Test it**
+
 ```bash
 # Monitor logs
 make tunnel-logs
@@ -306,6 +322,7 @@ make down
 ```
 
 ⚠️ **Important Notes:**
+
 - Quick tunnels generate a new random URL on each restart
 - Never use quick tunnel or expose credentials in production
 - The tunnel only exposes the API; Postgres, Redis, MinIO remain internal

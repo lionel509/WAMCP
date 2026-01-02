@@ -30,7 +30,7 @@ def messenger_with_token():
 async def test_send_text_missing_token(messenger_no_token):
     """When token is missing, send_text should return error."""
     result = await messenger_no_token.send_text(
-        to="15169007810",
+        to="15555555555",
         body="Test message"
     )
     assert "error" in result
@@ -48,7 +48,7 @@ async def test_send_text_missing_phone_id():
         
         messenger = WhatsAppMessenger()
         result = await messenger.send_text(
-            to="15169007810",
+            to="15555555555",
             body="Test message"
         )
         assert "error" in result
@@ -66,7 +66,7 @@ async def test_send_text_placeholder_phone_id():
         
         messenger = WhatsAppMessenger()
         result = await messenger.send_text(
-            to="15169007810",
+            to="15555555555",
             body="Test message"
         )
         assert "error" in result
@@ -127,7 +127,7 @@ async def test_graph_error_with_invalid_json(messenger_with_token):
         
         with patch("app.services.whatsapp_messenger.logger") as mock_logger:
             result = await messenger_with_token.send_text(
-                to="15169007810",
+                to="15555555555",
                 body="Test"
             )
             
@@ -163,7 +163,7 @@ async def test_graph_error_with_fbtrace_id(messenger_with_token):
         
         with patch("app.services.whatsapp_messenger.logger") as mock_logger:
             result = await messenger_with_token.send_text(
-                to="15169007810",
+                to="15555555555",
                 body="Test"
             )
             
@@ -185,7 +185,7 @@ async def test_send_text_http_exception(messenger_with_token):
         
         with patch("app.services.whatsapp_messenger.logger") as mock_logger:
             result = await messenger_with_token.send_text(
-                to="15169007810",
+                to="15555555555",
                 body="Test"
             )
             

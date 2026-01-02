@@ -2,7 +2,7 @@
 
 # Helper script to send a WhatsApp message via Meta Graph API
 # Usage: ./scripts/send_whatsapp_message.sh [phone_number] [template_name]
-# Example: ./scripts/send_whatsapp_message.sh 15169007810 hello_world
+# Example: ./scripts/send_whatsapp_message.sh 15555555555 hello_world
 
 set -e
 
@@ -24,7 +24,7 @@ if [ -z "$PHONE_NUMBER" ]; then
     echo "❌ Error: No phone number provided."
     echo "Usage: $0 <phone_number> [template_name] [language_code]"
     echo ""
-    echo "Example: $0 15169007810 hello_world en_US"
+    echo "Example: $0 15555555555 hello_world en_US"
     exit 1
 fi
 
